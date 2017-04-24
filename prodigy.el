@@ -210,6 +210,9 @@ The list is a property list with the following properties:
   Call this function with (service, output), each time process gets
   new output.
 
+`live-p'
+  Call this function with (service) to check if the service is running
+
 `ready-message'
   The text that a service displays when it is ready.  Will be
   matched as a regexp.")
@@ -596,8 +599,11 @@ the timeouts stop."
 
 (defun prodigy-service-started-p (service)
   "Return true if SERVICE is started, false otherwise."
-  (-when-let (process (plist-get service :process))
-    (process-live-p process)))
+  (or (-when-let (process (plist-get service :process))
+        (process-live-p process))
+      (-when-let (live-p (plist-get service :live-p))
+        (apply live-p service)
+        )))
 
 (defun prodigy-service-or-first-tag-with (service property)
   "Return SERVICE PROPERTY or tag with PROPERTY.
@@ -1003,7 +1009,7 @@ the process is put in failed status."
         (prodigy-every 1
             (lambda (next)
               (setq tryout (1+ tryout))
-              (if (process-live-p process)
+              (if (prodigy-service-started-p service)
                   (when callback (funcall callback))
                 (if (= tryout prodigy-start-tryouts)
                     (prodigy-set-status service 'failed)
@@ -1216,6 +1222,15 @@ SIGNINT signal."
             (setq url (prodigy-completing-read "URL: " url)))
           (browse-url url))
       (message "Service does not specify url or port, cannot determine url"))))
+
+(defun prodigy-refresh-statuses ()
+  "Refresh the statuses of all services."
+  (interactive)
+  (-each prodigy-services
+    (lambda(service)
+      (if (prodigy-service-started-p service)
+          (prodigy-set-status service 'running)
+        (prodigy-set-status service 'stopped)))))
 
 (defun prodigy-refresh ()
   "Refresh list of services."
